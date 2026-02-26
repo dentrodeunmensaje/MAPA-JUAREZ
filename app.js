@@ -1,3 +1,5 @@
+// --- MAPA-MORFO / MAPA-JUAREZ ---
+
 // 1) Pega tu API key aquí (solo para desarrollo local)
 const API_KEY = "AIzaSyAqQDU_bhrIp3dyKBF8sTb5QN3HK3ch7to";
 
@@ -5,7 +7,11 @@ const API_KEY = "AIzaSyAqQDU_bhrIp3dyKBF8sTb5QN3HK3ch7to";
 const CDJ_CENTER = { lat: 31.6904, lng: -106.4245 };
 const INITIAL_ZOOM = 12;
 
-// Cargador moderno (recommended) + importLibrary()
+// CSV
+const CSV_PATH = "./eventos.csv";
+const LIST_SEP = "|";
+
+// Cargador moderno + importLibrary()
 async function loadGoogleMaps() {
   if (window.google?.maps) return;
 
@@ -15,23 +21,20 @@ async function loadGoogleMaps() {
     v: "weekly",
   });
 
-  // Nota: no usamos callback; esperamos a que cargue el script
   script.src = `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
   script.async = true;
   script.defer = true;
 
   const loaded = new Promise((resolve, reject) => {
     script.addEventListener("load", resolve);
-    script.addEventListener("error", () => reject(new Error("No se pudo cargar Google Maps JS")));
+    script.addEventListener("error", () =>
+      reject(new Error("No se pudo cargar Google Maps JS"))
+    );
   });
 
   document.head.appendChild(script);
   await loaded;
 }
-// --- MAPA-MORFO: CSV loader + parser + normalizer (Entrega 1) ---
-
-const CSV_PATH = "./eventos.csv";
-const LIST_SEP = "|";
 
 // Parser CSV (maneja comillas dobles, comas dentro de comillas y saltos de línea)
 function parseCSV(text) {
@@ -62,7 +65,6 @@ function parseCSV(text) {
       } else if (c === "\n") {
         row.push(field);
         field = "";
-        // evita filas vacías por líneas en blanco
         if (row.some((x) => x.trim() !== "")) rows.push(row);
         row = [];
       } else if (c === "\r") {
@@ -73,7 +75,6 @@ function parseCSV(text) {
     }
   }
 
-  // último campo
   row.push(field);
   if (row.some((x) => x.trim() !== "")) rows.push(row);
 
@@ -97,7 +98,6 @@ function toNumber(value, fieldName) {
 }
 
 function normalizeEvent(obj) {
-  // date: YYYY-MM-DD, time: HH:MM (24h). Esto sirve para ordenar.
   const datetimeKey = `${obj.date}T${obj.time}`;
 
   return {
@@ -136,9 +136,23 @@ async function loadEventsFromCSV(path = CSV_PATH) {
   const dataRows = rows.slice(1);
 
   const required = [
-    "event_id","title","acts","scene","date","time","lat","lng",
-    "place_name","address","description","symbols","reflection","photos","videos"
+    "event_id",
+    "title",
+    "acts",
+    "scene",
+    "date",
+    "time",
+    "lat",
+    "lng",
+    "place_name",
+    "address",
+    "description",
+    "symbols",
+    "reflection",
+    "photos",
+    "videos",
   ];
+
   for (const col of required) {
     if (!header.includes(col)) {
       throw new Error(`Falta columna requerida en CSV: "${col}"`);
@@ -158,16 +172,13 @@ async function loadEventsFromCSV(path = CSV_PATH) {
     }
   });
 
-  // Validación: IDs únicos
   const seen = new Set();
   for (const ev of events) {
     if (seen.has(ev.event_id)) throw new Error(`event_id duplicado: ${ev.event_id}`);
     seen.add(ev.event_id);
   }
 
-  // Orden: date + time (asc)
   events.sort((a, b) => a.datetimeKey.localeCompare(b.datetimeKey));
-
   return events;
 }
 
@@ -193,32 +204,193 @@ function diagnostics(events) {
   console.log("Scenes detectadas:", Array.from(allScenes).sort());
   console.log("Acts detectados (muestra):", Array.from(allActs).sort().slice(0, 25));
 }
+
+function el(tag, attrs = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  for (const ch of children) node.appendChild(ch);
+  return node;
+}
+
+function isLikelyImageUrl(url) {
+  const u = url.toLowerCase();
+  return (
+    u.endsWith(".jpg") ||
+    u.endsWith(".jpeg") ||
+    u.endsWith(".png") ||
+    u.endsWith(".webp") ||
+    u.includes("drive.google.com/uc?export=view") ||
+    u.includes("googleusercontent.com")
+  );
+}
+
+function toYouTubeEmbed(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtu.be")) {
+      const id = u.pathname.replace("/", "").trim();
+      return id ? `https://www.youtube.com/embed/${id}` : null;
+    }
+    if (u.hostname.includes("youtube.com")) {
+      const id = u.searchParams.get("v");
+      return id ? `https://www.youtube.com/embed/${id}` : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function renderSidebar(events, onSelect) {
+  const listEl = document.getElementById("eventList");
+  const countEl = document.getElementById("eventCount");
+  if (!listEl) throw new Error("No existe #eventList. Revisa index.html.");
+  if (countEl) countEl.textContent = `${events.length} evento(s)`;
+
+  listEl.innerHTML = "";
+
+  const itemsById = new Map();
+
+  for (const ev of events) {
+    const item = el(
+      "div",
+      {
+        class: "event-item",
+        "data-id": ev.event_id,
+        onclick: () => onSelect(ev.event_id),
+      },
+      [
+        el("div", { class: "event-title", text: ev.title || "(sin título)" }),
+        el("div", { class: "event-meta" }, [
+          el("span", { text: `${ev.date} ${ev.time}` }),
+          el("span", { text: ev.place_name || "" }),
+        ]),
+      ]
+    );
+
+    listEl.appendChild(item);
+    itemsById.set(ev.event_id, item);
+  }
+
+  const detail = el("div", { id: "eventDetail", class: "event-detail" }, []);
+  listEl.appendChild(detail);
+
+  return { itemsById, detailEl: detail };
+}
+
+function renderEventDetail(ev, detailEl) {
+  detailEl.innerHTML = "";
+
+  const chips = el(
+    "div",
+    { class: "chips" },
+    (ev.symbols || []).map((t) => el("span", { class: "chip", text: t }))
+  );
+
+  const acts = (ev.acts || []).length ? ev.acts.join(" • ") : "";
+  const scene = (ev.scene || []).length ? ev.scene.join(" • ") : "";
+
+  const photos = ev.photos || [];
+  const photoGrid = el("div", { class: "media-grid" }, []);
+  const photoLinks = el("div", { class: "linklist" }, []);
+
+  for (const url of photos) {
+    if (isLikelyImageUrl(url)) {
+      const a = el(
+        "a",
+        { href: url, target: "_blank", rel: "noopener noreferrer" },
+        [el("img", { class: "thumb", src: url, alt: "Foto del evento" })]
+      );
+      photoGrid.appendChild(a);
+    } else {
+      photoLinks.appendChild(
+        el("a", { href: url, target: "_blank", rel: "noopener noreferrer", text: "Foto (link)" })
+      );
+    }
+  }
+
+  const videos = ev.videos || [];
+  const videoBox = el("div", { class: "linklist" }, []);
+  for (const url of videos) {
+    const embed = toYouTubeEmbed(url);
+    if (embed) {
+      videoBox.appendChild(
+        el("iframe", {
+          class: "video-embed",
+          src: embed,
+          allow:
+            "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share",
+          allowfullscreen: "true",
+          title: "Video de YouTube",
+        })
+      );
+    } else {
+      videoBox.appendChild(
+        el("a", { href: url, target: "_blank", rel: "noopener noreferrer", text: "Video (link)" })
+      );
+    }
+  }
+
+  detailEl.appendChild(el("h3", { class: "detail-title", text: ev.title || "(sin título)" }));
+  detailEl.appendChild(
+    el("div", {
+      class: "detail-block",
+      text: `${ev.date} ${ev.time} — ${ev.place_name || ""}${ev.address ? " — " + ev.address : ""}`,
+    })
+  );
+
+  if (acts) detailEl.appendChild(el("div", { class: "detail-block", text: `Acts: ${acts}` }));
+  if (scene) detailEl.appendChild(el("div", { class: "detail-block", text: `Scene: ${scene}` }));
+
+  if (ev.description) detailEl.appendChild(el("div", { class: "detail-block", text: ev.description }));
+  if (ev.reflection) detailEl.appendChild(el("div", { class: "detail-block", text: ev.reflection }));
+
+  if ((ev.symbols || []).length) {
+    detailEl.appendChild(el("div", { class: "detail-block", text: "Tags:" }));
+    detailEl.appendChild(chips);
+  }
+
+  if (photos.length) {
+    detailEl.appendChild(el("div", { class: "detail-block", text: "Fotos:" }));
+    if (photoGrid.childNodes.length) detailEl.appendChild(photoGrid);
+    if (photoLinks.childNodes.length) detailEl.appendChild(photoLinks);
+  }
+
+  if (videos.length) {
+    detailEl.appendChild(el("div", { class: "detail-block", text: "Videos:" }));
+    detailEl.appendChild(videoBox);
+  }
+}
+
+// ✅ FIX CLAVE: NO pisar el Map nativo de JS
 async function initMap(events) {
   await loadGoogleMaps();
 
-  const { Map } = await google.maps.importLibrary("maps");
+  const { Map: GoogleMap } = await google.maps.importLibrary("maps");
   const { Marker } = await google.maps.importLibrary("marker");
 
   const mapEl = document.getElementById("map");
-  if (!mapEl) throw new Error('No existe el contenedor #map en el DOM.');
+  if (!mapEl) throw new Error("No existe el contenedor #map en el DOM.");
 
-  // Crea el mapa (sin mapId por ahora)
-  const map = new Map(mapEl, {
-    center: CDJ_CENTER,   // fallback si no hay eventos
-    zoom: INITIAL_ZOOM,   // fallback si no hay eventos
+  const map = new GoogleMap(mapEl, {
+    center: CDJ_CENTER,
+    zoom: INITIAL_ZOOM,
   });
 
-  // Si no hay eventos, dejamos el mapa en CDJ_CENTER
-  if (!events || events.length === 0) {
-    console.warn("No hay eventos para mostrar.");
-    return map;
-  }
-
-  // Bounds para encuadrar todos los puntos
+  const markersById = new Map(); // <- este ya es el Map nativo de JS (correcto)
   const bounds = new google.maps.LatLngBounds();
 
-  // Creamos marcadores
-  const markers = events.map((ev) => {
+  if (!events || events.length === 0) {
+    console.warn("No hay eventos para mostrar.");
+    return { map, markersById, bounds: null };
+  }
+
+  for (const ev of events) {
     const pos = { lat: ev.lat, lng: ev.lng };
     bounds.extend(pos);
 
@@ -228,33 +400,56 @@ async function initMap(events) {
       title: ev.title || ev.event_id,
     });
 
-    marker.addListener("click", () => {
-      console.log("Evento seleccionado:", ev.event_id, ev.datetimeKey, ev.title);
-      // Próximo paso: abrir ficha detallada en panel
-    });
+    markersById.set(ev.event_id, marker);
+  }
 
-    return marker;
-  });
-
-  // Encierra todos los eventos en pantalla
   if (events.length === 1) {
     map.setCenter({ lat: events[0].lat, lng: events[0].lng });
     map.setZoom(15);
   } else {
-    map.fitBounds(bounds, 60); // padding en px
+    map.fitBounds(bounds, 60);
   }
 
   console.log("Mapa listo con eventos:", events.length);
-  return { map, markers };
+  return { map, markersById, bounds };
 }
 
+// Arranque
 loadEventsFromCSV()
   .then((events) => {
     diagnostics(events);
-    return initMap(events);
+    return initMap(events).then(({ map, markersById }) => ({ events, map, markersById }));
+  })
+  .then(({ events, map, markersById }) => {
+    const { itemsById, detailEl } = renderSidebar(events, selectEvent);
+
+    let selectedId = null;
+
+    for (const ev of events) {
+      const marker = markersById.get(ev.event_id);
+      if (!marker) continue;
+
+      marker.addListener("click", () => selectEvent(ev.event_id));
+    }
+
+    function selectEvent(eventId) {
+      const ev = events.find((e) => e.event_id === eventId);
+      if (!ev) return;
+
+      if (selectedId && itemsById.get(selectedId))
+        itemsById.get(selectedId).classList.remove("active");
+      if (itemsById.get(eventId)) itemsById.get(eventId).classList.add("active");
+      selectedId = eventId;
+
+      map.panTo({ lat: ev.lat, lng: ev.lng });
+
+      renderEventDetail(ev, detailEl);
+    }
+
+    if (events.length) selectEvent(events[0].event_id);
   })
   .catch((err) => {
     console.error(err);
-    alert(err?.message || "Error cargando CSV o mapa. Revisa consola.");
+    alert(err?.message || "Error cargando CSV/Mapa/UI. Revisa consola.");
   });
   

@@ -13,9 +13,20 @@
       <small>foto-etnografía del público y la vida musical cotidiana en Ciudad Juárez</small>
     </header>
 
-    <main>
-      <div id="map" aria-label="Mapa de Ciudad Juárez"></div>
-    </main>
+    <main id="app">
+  <aside id="sidebar" aria-label="Panel de eventos">
+    <div class="sidebar-header">
+      <h2>Eventos</h2>
+      <div id="eventCount" class="muted"></div>
+    </div>
+
+    <div id="eventList" class="event-list" aria-label="Lista de eventos"></div>
+  </aside>
+
+  <section id="mapWrap" aria-label="Mapa">
+    <div id="map"></div>
+  </section>
+</main>
 
     <script type="module" src="./app.js"></script>
   </body>
