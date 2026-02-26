@@ -411,14 +411,14 @@ function renderEventDetail(ev, detailEl) {
     text: `${ev.date} ${ev.time} — ${ev.place_name || ""}${ev.address ? " — " + ev.address : ""}`
   }));
 
-  if (acts) detailEl.appendChild(el("div", { class: "detail-block", text: `Acts: ${acts}` }));
-  if (scene) detailEl.appendChild(el("div", { class: "detail-block", text: `Scene: ${scene}` }));
+  if (acts) detailEl.appendChild(el("div", { class: "detail-block", text: `Actos: ${acts}` }));
+  if (scene) detailEl.appendChild(el("div", { class: "detail-block", text: `Escena: ${scene}` }));
 
   if (ev.description) detailEl.appendChild(el("div", { class: "detail-block", text: ev.description }));
   if (ev.reflection) detailEl.appendChild(el("div", { class: "detail-block", text: ev.reflection }));
 
   if ((ev.symbols || []).length) {
-    detailEl.appendChild(el("div", { class: "detail-block", text: "Tags:" }));
+    detailEl.appendChild(el("div", { class: "detail-block", text: "Indicadores:" }));
     detailEl.appendChild(chips);
   }
 
