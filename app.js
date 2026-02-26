@@ -225,8 +225,58 @@ function isLikelyImageUrl(url) {
     u.endsWith(".png") ||
     u.endsWith(".webp") ||
     u.includes("drive.google.com/uc?export=view") ||
+    u.includes("drive.google.com/thumbnail") ||
     u.includes("googleusercontent.com")
   );
+}
+
+// Convierte links de Drive "file/d/.../view" o "open?id=..." a thumbnail ligero
+function driveToThumb(url, size = 800) {
+  try {
+    const u = new URL(url);
+
+    // si ya es googleusercontent o thumbnail, no tocamos
+    if (u.hostname.includes("googleusercontent.com")) return url;
+    if (u.hostname.includes("drive.google.com") && u.pathname.includes("/thumbnail")) return url;
+
+    if (u.hostname.includes("drive.google.com")) {
+      // Caso: /file/d/FILE_ID/view
+      const parts = u.pathname.split("/").filter(Boolean);
+      const dIndex = parts.indexOf("d");
+      if (dIndex !== -1 && parts[dIndex + 1]) {
+        const fileId = parts[dIndex + 1];
+        return `https://drive.google.com/thumbnail?id=${fileId}&sz=w${size}`;
+      }
+
+      // Caso: open?id=FILE_ID
+      const id = u.searchParams.get("id");
+      if (id) return `https://drive.google.com/thumbnail?id=${id}&sz=w${size}`;
+    }
+
+    return url;
+  } catch {
+    return url;
+  }
+}
+
+// Preload con límite de concurrencia (evita “bombardear” y reduce 429)
+async function preloadWithLimit(urls, limit = 2) {
+  const queue = [...urls];
+
+  const workers = Array.from({ length: Math.max(1, limit) }, async () => {
+    while (queue.length) {
+      const url = queue.shift();
+      await new Promise((resolve) => {
+        const img = new Image();
+        img.loading = "lazy";
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+        img.src = url;
+      });
+    }
+  });
+
+  await Promise.all(workers);
 }
 
 function toYouTubeEmbed(url) {
@@ -257,21 +307,17 @@ function renderSidebar(events, onSelect) {
   const itemsById = new Map();
 
   for (const ev of events) {
-    const item = el(
-      "div",
-      {
-        class: "event-item",
-        "data-id": ev.event_id,
-        onclick: () => onSelect(ev.event_id),
-      },
-      [
-        el("div", { class: "event-title", text: ev.title || "(sin título)" }),
-        el("div", { class: "event-meta" }, [
-          el("span", { text: `${ev.date} ${ev.time}` }),
-          el("span", { text: ev.place_name || "" }),
-        ]),
-      ]
-    );
+    const item = el("div", {
+      class: "event-item",
+      "data-id": ev.event_id,
+      onclick: () => onSelect(ev.event_id),
+    }, [
+      el("div", { class: "event-title", text: ev.title || "(sin título)" }),
+      el("div", { class: "event-meta" }, [
+        el("span", { text: `${ev.date} ${ev.time}` }),
+        el("span", { text: ev.place_name || "" }),
+      ])
+    ]);
 
     listEl.appendChild(item);
     itemsById.set(ev.event_id, item);
@@ -286,63 +332,84 @@ function renderSidebar(events, onSelect) {
 function renderEventDetail(ev, detailEl) {
   detailEl.innerHTML = "";
 
-  const chips = el(
-    "div",
-    { class: "chips" },
+  const chips = el("div", { class: "chips" },
     (ev.symbols || []).map((t) => el("span", { class: "chip", text: t }))
   );
 
-  const acts = (ev.acts || []).length ? ev.acts.join(" • ") : "";
-  const scene = (ev.scene || []).length ? ev.scene.join(" • ") : "";
+  const acts = (ev.acts || []).length ? (ev.acts || []).join(" • ") : "";
+  const scene = (ev.scene || []).length ? (ev.scene || []).join(" • ") : "";
 
-  const photos = ev.photos || [];
+  // ---- FOTOS (anti-429): 3 miniaturas + botón para cargar el resto ----
+  const photos = (ev.photos || []);
+  const MAX_THUMBS = 3;
+
   const photoGrid = el("div", { class: "media-grid" }, []);
   const photoLinks = el("div", { class: "linklist" }, []);
 
-  for (const url of photos) {
+  const thumbUrls = photos.slice(0, MAX_THUMBS).map((u) => driveToThumb(u, 800));
+  const remaining = photos.slice(MAX_THUMBS).map((u) => driveToThumb(u, 800));
+
+  // Render de miniaturas iniciales (lazy)
+  for (const url of thumbUrls) {
     if (isLikelyImageUrl(url)) {
-      const a = el(
-        "a",
-        { href: url, target: "_blank", rel: "noopener noreferrer" },
-        [el("img", { class: "thumb", src: url, alt: "Foto del evento" })]
-      );
+      const a = el("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, [
+        el("img", { class: "thumb", src: url, alt: "Foto del evento", loading: "lazy" })
+      ]);
       photoGrid.appendChild(a);
     } else {
-      photoLinks.appendChild(
-        el("a", { href: url, target: "_blank", rel: "noopener noreferrer", text: "Foto (link)" })
-      );
+      photoLinks.appendChild(el("a", {
+        href: url, target: "_blank", rel: "noopener noreferrer", text: "Foto (link)"
+      }));
     }
   }
 
-  const videos = ev.videos || [];
+  // Botón para cargar más (bajo demanda, con límite de concurrencia)
+  let moreBtn = null;
+  if (remaining.length) {
+    moreBtn = el("button", {
+      type: "button",
+      class: "load-more",
+      text: `Cargar ${remaining.length} foto(s) más`,
+      onclick: () => {
+  // 1) Quitamos el botón de inmediato para que no se quede trabado
+  moreBtn.remove();
+
+  // 2) Pintamos el resto inmediatamente (lazy)
+  for (const url of remaining) {
+    const a = el("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, [
+      el("img", { class: "thumb", src: url, alt: "Foto del evento", loading: "lazy" })
+    ]);
+    photoGrid.appendChild(a);
+  }
+}
+    });
+  }
+
+  // ---- VIDEOS: solo en ficha detallada (como pediste) ----
+  const videos = (ev.videos || []);
   const videoBox = el("div", { class: "linklist" }, []);
   for (const url of videos) {
     const embed = toYouTubeEmbed(url);
     if (embed) {
-      videoBox.appendChild(
-        el("iframe", {
-          class: "video-embed",
-          src: embed,
-          allow:
-            "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share",
-          allowfullscreen: "true",
-          title: "Video de YouTube",
-        })
-      );
+      videoBox.appendChild(el("iframe", {
+        class: "video-embed",
+        src: embed,
+        allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share",
+        allowfullscreen: "true",
+        title: "Video de YouTube"
+      }));
     } else {
-      videoBox.appendChild(
-        el("a", { href: url, target: "_blank", rel: "noopener noreferrer", text: "Video (link)" })
-      );
+      videoBox.appendChild(el("a", {
+        href: url, target: "_blank", rel: "noopener noreferrer", text: "Video (link)"
+      }));
     }
   }
 
   detailEl.appendChild(el("h3", { class: "detail-title", text: ev.title || "(sin título)" }));
-  detailEl.appendChild(
-    el("div", {
-      class: "detail-block",
-      text: `${ev.date} ${ev.time} — ${ev.place_name || ""}${ev.address ? " — " + ev.address : ""}`,
-    })
-  );
+  detailEl.appendChild(el("div", {
+    class: "detail-block",
+    text: `${ev.date} ${ev.time} — ${ev.place_name || ""}${ev.address ? " — " + ev.address : ""}`
+  }));
 
   if (acts) detailEl.appendChild(el("div", { class: "detail-block", text: `Acts: ${acts}` }));
   if (scene) detailEl.appendChild(el("div", { class: "detail-block", text: `Scene: ${scene}` }));
@@ -359,6 +426,7 @@ function renderEventDetail(ev, detailEl) {
     detailEl.appendChild(el("div", { class: "detail-block", text: "Fotos:" }));
     if (photoGrid.childNodes.length) detailEl.appendChild(photoGrid);
     if (photoLinks.childNodes.length) detailEl.appendChild(photoLinks);
+    if (moreBtn) detailEl.appendChild(moreBtn);
   }
 
   if (videos.length) {
@@ -367,7 +435,7 @@ function renderEventDetail(ev, detailEl) {
   }
 }
 
-// ✅ FIX CLAVE: NO pisar el Map nativo de JS
+// IMPORTANTE: NO pisar el Map nativo (JS) con el Map de Google Maps
 async function initMap(events) {
   await loadGoogleMaps();
 
@@ -375,14 +443,14 @@ async function initMap(events) {
   const { Marker } = await google.maps.importLibrary("marker");
 
   const mapEl = document.getElementById("map");
-  if (!mapEl) throw new Error("No existe el contenedor #map en el DOM.");
+  if (!mapEl) throw new Error('No existe el contenedor #map en el DOM.');
 
   const map = new GoogleMap(mapEl, {
     center: CDJ_CENTER,
     zoom: INITIAL_ZOOM,
   });
 
-  const markersById = new Map(); // <- este ya es el Map nativo de JS (correcto)
+  const markersById = new Map(); // Map nativo de JS
   const bounds = new google.maps.LatLngBounds();
 
   if (!events || events.length === 0) {
@@ -414,7 +482,6 @@ async function initMap(events) {
   return { map, markersById, bounds };
 }
 
-// Arranque
 loadEventsFromCSV()
   .then((events) => {
     diagnostics(events);
@@ -428,7 +495,6 @@ loadEventsFromCSV()
     for (const ev of events) {
       const marker = markersById.get(ev.event_id);
       if (!marker) continue;
-
       marker.addListener("click", () => selectEvent(ev.event_id));
     }
 
@@ -436,8 +502,7 @@ loadEventsFromCSV()
       const ev = events.find((e) => e.event_id === eventId);
       if (!ev) return;
 
-      if (selectedId && itemsById.get(selectedId))
-        itemsById.get(selectedId).classList.remove("active");
+      if (selectedId && itemsById.get(selectedId)) itemsById.get(selectedId).classList.remove("active");
       if (itemsById.get(eventId)) itemsById.get(eventId).classList.add("active");
       selectedId = eventId;
 
@@ -452,4 +517,3 @@ loadEventsFromCSV()
     console.error(err);
     alert(err?.message || "Error cargando CSV/Mapa/UI. Revisa consola.");
   });
-  
