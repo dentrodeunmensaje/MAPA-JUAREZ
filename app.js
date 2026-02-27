@@ -473,7 +473,7 @@ async function initMap(events) {
 
   if (events.length === 1) {
     map.setCenter({ lat: events[0].lat, lng: events[0].lng });
-    map.setZoom(15);
+    map.setZoom(12);
   } else {
     map.fitBounds(bounds, 60);
   }
