@@ -4,8 +4,8 @@
 const API_KEY = "AIzaSyAqQDU_bhrIp3dyKBF8sTb5QN3HK3ch7to";
 
 // 2) Coordenadas aproximadas del centro de Ciudad Juárez
-const CDJ_CENTER = { lat: 31.6904, lng: -106.4245 };
-const INITIAL_ZOOM = 12;
+const CDJ_CENTER = { lat: 31.72513, lng: -106.42849 };
+const INITIAL_ZOOM = 5;
 
 // CSV
 const CSV_PATH = "./eventos.csv";
