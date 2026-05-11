@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MAPA-MORFO — VIZ</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+
+  <body>
+    <header class="topbar">
+      <div class="title">
+        <h1>VIZ — Ciudad viva, ciudad concierto</h1>
+        <small>Timeline (tamaño=precio) + Heatmap (escena×particularidades)</small>
+      </div>
+
+      <div class="actions">
+        <a class="pill" href="../index.html">Volver al mapa</a>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="panel" aria-label="Controles">
+        <h2>Filtros</h2>
+        <div id="controls" class="controls"></div>
+
+        <h2>Selección</h2>
+        <div id="selection" class="selection muted">—</div>
+
+        <h2>Eventos filtrados</h2>
+        <div id="list" class="list"></div>
+      </aside>
+
+      <section class="viz">
+        <div id="canvasWrap" class="canvas-wrap"></div>
+        <div class="hint muted">
+          Timeline: arrastra para seleccionar rango de fechas · Heatmap: click en una celda para filtrar por escena+tag · Reset limpia todo
+        </div>
+      </section>
+    </main>
+
+    <!-- p5.js -->
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+
+    <!-- App -->
+    <script src="./data.js"></script>
+    <script src="./ui.js"></script>
+    <script src="./sketch.js"></script>
+  </body>
+</html>
