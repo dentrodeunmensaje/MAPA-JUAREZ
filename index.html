@@ -3,30 +3,99 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MAPA-JUAREZ</title>
+    <title>MAPA-MORFO</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
 
   <body>
     <header class="topbar">
-      <h1>Ciudad viva, ciudad concierto</h1>
-      <small>Etnografía de la vida musical cotidiana en Ciudad Juárez</small>
+      <button id="btnLeft" class="icon-btn" title="Eventos" aria-label="Abrir lista de eventos">☰</button>
+
+      <div class="topbar-title">
+        <h1>Ciudad viva, ciudad concierto</h1>
+        <small>Mapa-visor de eventos (Ciudad Juárez)</small>
+      </div>
+
+      <button id="btnStats" class="pill-btn" title="Estadísticas">Estadísticas</button>
+      <button id="btnRight" class="icon-btn" title="Filtros" aria-label="Abrir filtros">☰</button>
     </header>
 
-    <main id="app">
-  <aside id="sidebar" aria-label="Panel de eventos">
-    <div class="sidebar-header">
-      <h2>Eventos</h2>
-      <div id="eventCount" class="muted"></div>
-    </div>
+    <!-- MAP SCREEN -->
+    <main id="mapScreen" class="screen">
+      <div id="map"></div>
 
-    <div id="eventList" class="event-list" aria-label="Lista de eventos"></div>
-  </aside>
+      <!-- Left drawer (Eventos) -->
+      <aside id="leftDrawer" class="drawer drawer-left" aria-label="Panel de eventos">
+        <div class="drawer-head">
+          <div>
+            <div class="drawer-title">Eventos</div>
+            <div id="eventCount" class="muted"></div>
+          </div>
+          <button id="btnCloseLeft" class="icon-btn" aria-label="Cerrar eventos">✕</button>
+        </div>
 
-  <section id="mapWrap" aria-label="Mapa">
-    <div id="map"></div>
-  </section>
-</main>
+        <div id="eventList" class="event-list" aria-label="Lista de eventos"></div>
+        <div id="eventDetail" class="event-detail" aria-label="Ficha del evento"></div>
+      </aside>
+
+      <!-- Right drawer (Filtros) -->
+      <aside id="rightDrawer" class="drawer drawer-right" aria-label="Panel de filtros">
+        <div class="drawer-head">
+          <div>
+            <div class="drawer-title">Filtros</div>
+            <div class="muted">Afecta mapa, polígono y estadísticas</div>
+          </div>
+          <button id="btnCloseRight" class="icon-btn" aria-label="Cerrar filtros">✕</button>
+        </div>
+
+        <div id="filtersPanel" class="filters"></div>
+
+        <div class="filters-actions">
+          <button id="btnClearFilters" class="pill-btn">Limpiar filtros</button>
+        </div>
+      </aside>
+
+      <!-- Backdrop -->
+      <div id="backdrop" class="backdrop" aria-hidden="true"></div>
+    </main>
+
+    <!-- STATS SCREEN -->
+    <main id="statsScreen" class="screen hidden" aria-label="Pantalla de estadísticas">
+      <header class="stats-top">
+        <h2>Estadísticas</h2>
+        <div class="stats-actions">
+          <button id="btnBackToMap" class="pill-btn">Regresar al mapa</button>
+        </div>
+      </header>
+
+      <section class="stats-grid">
+        <div class="card">
+          <h3>Resumen</h3>
+          <div id="statsSummary" class="muted"></div>
+        </div>
+
+        <div class="card">
+          <h3>Eventos por escena</h3>
+          <div id="statsByScene"></div>
+        </div>
+
+        <div class="card">
+          <h3>Particularidades (Top)</h3>
+          <div id="statsBySymbols"></div>
+        </div>
+
+        <div class="card">
+          <h3>Precio (rango)</h3>
+          <div id="statsPrice"></div>
+        </div>
+
+        <div class="card">
+          <h3>Gráfica rápida</h3>
+          <canvas id="statsChart" width="900" height="360"></canvas>
+          <div class="muted">Barras: eventos por escena (dataset filtrado).</div>
+        </div>
+      </section>
+    </main>
 
     <script type="module" src="./app.js"></script>
   </body>
